@@ -1,0 +1,3 @@
+content triage-helper content/
+skin    triage-helper modern/1.0 skin/
+locale  triage-helper en-US locale/en-US/
