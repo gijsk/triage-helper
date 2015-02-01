@@ -1,0 +1,24 @@
+#bz-triage-helper-container {
+  display: block !important;
+  position: fixed !important;
+  top: 0;
+  right: 0;
+  background: #fff;
+  color: #000;
+  border-bottom: 1px solid black;
+  border-left: 1px solid black;
+}
+
+#bz-triage-helper-container > #triage-header {
+  padding: 5px;
+  margin: 0;
+}
+
+#bz-triage-helper-container.error {
+  color: #f00;
+}
+
+#bz-triage-helper-container.loaded > #triage-tools {
+  display: none;
+}
+

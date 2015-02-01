@@ -5,22 +5,69 @@
 const {interfaces: Ci, utils: Cu, classes: Cc} = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
-// Don't use |this| because that's shared between frame scripts.
-let MyGlobals = {};
 
-XPCOMUtils.defineLazyModuleGetter(MyGlobals, "BugzillaHelper",
+Components.utils.importGlobalProperties(["XMLHttpRequest"]);
+// Don't use |this| because that's shared between frame scripts.
+let gShared = {};
+
+let gWins = new Set();
+
+XPCOMUtils.defineLazyModuleGetter(gShared, "BugzillaHelper",
     "chrome://triage-helper/content/BugzillaHelper.jsm");
 
-XPCOMUtils.defineLazyGetter(MyGlobals, "SandBox", function() {
-  debugger;
+function getXHRToPropOnBox(url, prop, methodToCall) {
+  if (gShared.SandBox[prop]) {
+    return;
+  }
+  let xhr = new XMLHttpRequest();
+  xhr.onload = function(e) {
+    gShared.SandBox[prop] = this.responseText;
+    for (let win of gWins) {
+      gShared.SandBox[methodToCall](win);
+    }
+    xhr.onload = null;
+    xhr = null;
+  };
+  xhr.overrideMimeType("text/plain");
+  xhr.open("GET", url);
+  xhr.send(null);
+}
+
+function ensureStylesGetLoaded() {
+  getXHRToPropOnBox("chrome://triage-helper/skin/bz.css", "_helperCSS", "insertStyle");
+}
+
+function ensureContentGetsLoaded() {
+  getXHRToPropOnBox("chrome://triage-helper/content/helper.html", "_helperHTML", "insertContent");
+}
+
+function ensureScriptGetsLoaded() {
+  getXHRToPropOnBox("chrome://triage-helper/content/inserted-helper.js", "_helperJS", "insertScript");
+}
+
+
+XPCOMUtils.defineLazyGetter(gShared, "SandBox", function() {
   let box = new Cu.Sandbox("https://bugzilla.mozilla.org", {
     sandboxName: "triage-helper-bmo-sandbox",
     wantComponents: false,
     wantGlobalProperties: ["CSS", "URL", "URLSearchParams", "XMLHttpRequest"],
     wantXrays: true
   });
-  for (let x in MyGlobals.BugzillaHelper) {
-    Cu.exportFunction(MyGlobals.BugzillaHelper[x], box, {defineAs: x});
+  for (let x in gShared.BugzillaHelper) {
+    if (x[0] == "_") {
+      continue;
+    }
+    if (typeof gShared.BugzillaHelper[x] == "function") {
+      Cu.exportFunction(gShared.BugzillaHelper[x], box, {defineAs: x});
+    } else {
+      try {
+        box[x] = Cu.cloneInto(gShared.BugzillaHelper[x], box);
+      } catch (ex) {
+        console.error("Error cloning " + x + ": ");
+        Cu.reportError(ex);
+        throw ex;
+      }
+    }
   }
   return box;
 });
@@ -36,15 +83,29 @@ function onDOMContentLoad(e) {
   // Don't care about frames:
   if (win != win.top)
     return;
-  debugger;
-  MyGlobals.SandBox.handlePage(win);
+
+  gWins.add(win);
+  win.addEventListener('unload', function(e) {
+    if (!e.isTrusted || e.target != e.target.top) {
+      return;
+    }
+    win.removeEventListener('unload', arguments.callee);
+    gWins.delete(win);
+  });
+  // Trigger the lazy getter:
+  let box = gShared.SandBox;
+  box.handlePage(win);
+  ensureStylesGetLoaded();
+  ensureContentGetsLoaded();
+  ensureScriptGetsLoaded();
 }
 
 function onChromeMessage(msg) {
   switch (msg) {
     case "shutdown":
-      Cu.nukeSandbox(MyGlobals.gSandBox);
-      gSandBox = null;
+      Cu.nukeSandbox(gShared.SandBox);
+      gWins.clear();
+      gShared.SandBox = null;
       break;
     default:
       Cu.reportError("Unknown chrome message received: " + msg);
