@@ -19,6 +19,8 @@ let BugzillaHelper = {
     } else {
       div.innerHTML = this._helperHTML;
     }
+    let ev = new CustomEvent("html-content-loaded");
+    div.dispatchEvent(ev);
   },
   insertStyle: function(win) {
     if (!this._helperCSS) {
