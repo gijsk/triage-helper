@@ -1,6 +1,13 @@
 // NB: loaded once for each bugzilla show_bug.cgi page
 /* Avoid interfering with bugzilla itself by wrapping in anon fn: */
 (function() {
+
+var INVALID_BUG_SPAM =
+`This is a production bug tracker used by the Mozilla community.
+Filing test bugs here wastes the time of all our contributors, volunteers as well as paid employees.
+Please use http://landfill.bugzilla.org/ for testing instead, and don't file test bugs here.
+If you continue to abuse this bugzilla instance, your account will be disabled.`;
+
 var gParentEl = document.getElementById("bz-triage-helper-container");
 var gContentEl = gParentEl.querySelector('#triage-tools');
 if (!gContentEl) {
@@ -67,15 +74,46 @@ function toggleVisible(el, v) {
   }
 }
 
-function fetchBugData() {
+function getBZAPIURLForBug() {
+  var root = location.host + location.pathname.substring(0, location.pathname.lastIndexOf('/'));
+  return location.protocol + "//" + root + "/rest/bug/" + gBugID;
+}
+
+function doBZXHR(method, postData, onload, onerror) {
   var xhr = new XMLHttpRequest();
-  var url = location.protocol + "//" + location.host + "/rest/bug/" + gBugID;
-  xhr.open("GET", url);
+  xhr.open(method, getBZAPIURLForBug());
   xhr.setRequestHeader("Accept", "application/json");
   xhr.responseType = "json";
-  xhr.onload = onBugzillaData;
-  xhr.onerror = onNoBugzillaData;
-  xhr.send();
+  xhr.onload = onload;
+  xhr.onerror = onerror;
+  if (postData) {
+    xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+    xhr.send(postData);
+  } else {
+    xhr.send();
+  }
+}
+
+function fetchBugData() {
+  doBZXHR("GET", null, onBugzillaData, onNoBugzillaData);
+}
+
+function onAfterPost(e) {
+  var xhr = e.target;
+  if (xhr && xhr.response && xhr.response.error) {
+    alert("There was an error submitting this data to bugzilla: " + xhr.response.message);
+    return;
+  }
+  location.reload(true);
+}
+
+function onAfterPostError(e) {
+  console.log(e);
+  alert("Error posting to bugzilla: " + e);
+}
+
+function postBugData(data) {
+  doBZXHR("PUT", JSON.stringify(data), onAfterPost, onAfterPostError);
 }
 
 function createSuggestionUI(filter) {
@@ -86,9 +124,23 @@ function createSuggestionUI(filter) {
   button.className = "bz-triage-suggestion-btn";
   button.textContent = filter.label;
   button.addEventListener('click', function(e) {
-    filter.onDoAction();
+    filter.onDoAction(filter.extraActions.filter(function(action) {
+      return el.querySelector('input[data-id="' + action.id + '"]').checked;
+    }));
   }, false);
   el.appendChild(button);
+  if (filter.extraActions) {
+    for (var i = 0; i < filter.extraActions.length; i++) {
+      var action = filter.extraActions[i];
+      var cb = document.createElement("input");
+      cb.setAttribute("type", "checkbox");
+      cb.setAttribute("data-id", action.id);
+      var label = document.createElement("label");
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(" " + action.label));
+      el.appendChild(label);
+    }
+  }
   gSuggestionList.appendChild(el);
 }
 
@@ -97,11 +149,10 @@ function createSuggestedActions() {
   gSuggestionList.id = "bz-triage-suggestions";
   toggleVisible(gContentEl, false);
   gContentEl.textContent = "Suggested actions:";
-  for (var i = 0; i < gFilters.length; i++) {
-    var filter = gFilters[i];
-    if (filter.applies()) {
-      createSuggestionUI(filter);
-    }
+  var myFilters = gFilters.slice(0).filter(function(f) { return f.applies(); });
+  myFilters.sort(function(a, b) { return a.applyLikelihood() < b.applyLikelihood() });
+  for (var i = 0; i < myFilters.length; i++) {
+    createSuggestionUI(myFilters[i]);
   }
   gContentEl.appendChild(gSuggestionList);
 }
@@ -110,14 +161,33 @@ var gFilters = [];
 
 var gMarkAsInvalidFilter = {
   id: "mark-invalid",
-  applies: function() {
+  applyLikelihood: function() {
     // FIXME do something cleverer
-    return true;
+    return 1;
+  },
+  applies: function() {
+    return gBugData.status != "RESOLVED";
   },
   label: "Mark as invalid",
-  onDoAction: function() {
-    alert("Go mark the bug invalid!");
-  }
+  onDoAction: function(additionalActions) {
+    var bugData = {"status": "RESOLVED", "resolution": "INVALID"};
+    additionalActions.forEach(function(action) { action.filterAction(bugData); });
+    postBugData(bugData);
+  },
+  extraActions: [
+    {
+      label: "Spammy",
+      id: "spam",
+      filterAction: function(d) {
+        d.product = "Invalid Bugs";
+        d.component = "General";
+        d.comment = {body: INVALID_BUG_SPAM};
+        d.version = 'unspecified';
+        // FIXME: tag comment as spam:
+        //doTagCommentSpam(gBugData.commentsdd
+      },
+    }
+  ],
 };
 
 gFilters.push(gMarkAsInvalidFilter);

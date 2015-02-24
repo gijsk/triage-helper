@@ -46,8 +46,13 @@ function ensureScriptGetsLoaded() {
 }
 
 
+const gAllowedHosts = [
+  "bugzilla.mozilla.org",
+  "landfill.bugzilla.org",
+];
+
 XPCOMUtils.defineLazyGetter(gShared, "SandBox", function() {
-  let box = new Cu.Sandbox("https://bugzilla.mozilla.org", {
+  let box = new Cu.Sandbox(gAllowedHosts.map(x => "https://" + x), {
     sandboxName: "triage-helper-bmo-sandbox",
     wantComponents: false,
     wantGlobalProperties: ["CSS", "URL", "URLSearchParams", "XMLHttpRequest"],
@@ -76,8 +81,8 @@ function onDOMContentLoad(e) {
   let win = e.target.defaultView;
   // Ensure we're on BMO:
   if (!win.location.protocol.startsWith("https") ||
-      win.location.host != "bugzilla.mozilla.org" ||
-      win.location.pathname != "/show_bug.cgi") {
+      !gAllowedHosts.find(x => x == win.location.host) ||
+      !win.location.pathname.endsWith("/show_bug.cgi")) {
     return;
   }
   // Don't care about frames:

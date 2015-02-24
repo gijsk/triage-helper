@@ -19,7 +19,7 @@ let BugzillaHelper = {
     } else {
       div.innerHTML = this._helperHTML;
     }
-    let ev = new CustomEvent("html-content-loaded");
+    let ev = new win.CustomEvent("html-content-loaded");
     div.dispatchEvent(ev);
   },
   insertStyle: function(win) {
@@ -44,7 +44,6 @@ let BugzillaHelper = {
   handlePage: function(win) {
     let doc = win.document;
     let div = doc.createElement('div');
-    Cu.reportError("Creating: " + this.elementID);
     div.id = this.elementID;
     // Avoid reflows as much as possible:
     div.setAttribute("style", "position: absolute; display: none;");
