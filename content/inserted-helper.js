@@ -120,25 +120,31 @@ function createSuggestionUI(filter) {
   var el = document.createElement("li");
   el.className = "bz-triage-suggestion";
   el.id = "bz-triage-suggestion-" + filter.id;
-  var button = document.createElement("button");
-  button.className = "bz-triage-suggestion-btn";
-  button.textContent = filter.label;
-  button.addEventListener('click', function(e) {
-    filter.onDoAction(filter.extraActions.filter(function(action) {
-      return el.querySelector('input[data-id="' + action.id + '"]').checked;
-    }));
-  }, false);
-  el.appendChild(button);
-  if (filter.extraActions) {
-    for (var i = 0; i < filter.extraActions.length; i++) {
-      var action = filter.extraActions[i];
-      var cb = document.createElement("input");
-      cb.setAttribute("type", "checkbox");
-      cb.setAttribute("data-id", action.id);
-      var label = document.createElement("label");
-      label.appendChild(cb);
-      label.appendChild(document.createTextNode(" " + action.label));
-      el.appendChild(label);
+  if (filter.createUI) {
+    el.appendChild(filter.createUI());
+  } else {
+    var button = document.createElement("button");
+    button.className = "bz-triage-suggestion-btn";
+    button.textContent = filter.label;
+    button.addEventListener('click', function(e) {
+      filter.onDoAction(filter.extraActions.filter(function(action) {
+        return el.querySelector('input[data-id="' + action.id + '"]').checked;
+      }));
+    }, false);
+    el.appendChild(button);
+    if (filter.extraActions) {
+      el.appendChild(document.createElement("br"));
+      for (var i = 0; i < filter.extraActions.length; i++) {
+        var action = filter.extraActions[i];
+        var cb = document.createElement("input");
+        cb.setAttribute("type", "checkbox");
+        cb.setAttribute("data-id", action.id);
+        var label = document.createElement("label");
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + action.label));
+        el.appendChild(label);
+        el.appendChild(document.createElement("br"));
+      }
     }
   }
   gSuggestionList.appendChild(el);
@@ -191,6 +197,113 @@ var gMarkAsInvalidFilter = {
 };
 
 gFilters.push(gMarkAsInvalidFilter);
+
+var gFixKeywordsFilter = {
+  id: "fix-keywords",
+  _words: {
+    crash: "crash",
+    "crash-stats.mozilla.com": "crashreportid",
+    hang: "hang",
+    freeze: "hang",
+    "stopped working": ["regression", "regressionwindow-wanted"],
+    broken: ["regression", "regressionwindow-wanted"],
+    flash: "flashplayer",
+  },
+  _normalKeywords: new Set([
+    "crash", "hang", "crashreportid", "steps-wanted", "stackwanted",
+    "testcase", "testcase-wanted", "helpwanted", "pp",
+    "regression", "regressionwindow-wanted", "addon-compat",
+    "dev-doc-needed", "dev-doc-complete", "qawanted",
+    "sec-low", "sec-moderate", "sec-high", "sec-critical", "sec-audit", "sec-want", "sec-other",
+    "sec-vector", "sec-incident", "sec508",
+    "meta",
+    "flashplayer",
+  ]),
+  _hasSuggestedKeywords: function() {
+    if (this.__suggestedKeywords) {
+      return this.__suggestedKeywords;
+    }
+    this.__suggestedKeywords = [];
+    var summary = gBugData.summary.toLowerCase();
+    var self = this;
+    for (var k in this._words) {
+      var keywordsToAdd = this._words[k];
+      if (!Array.isArray(keywordsToAdd)) {
+        keywordsToAdd = [keywordsToAdd];
+      }
+
+      function bugHasKeyword(kw) {
+        return gBugData.keywords.indexOf(kw) != -1;
+      }
+      if (summary.contains(k) && !keywordsToAdd.every(bugHasKeyword)) {
+        this.__suggestedKeywords = this.__suggestedKeywords.concat(keywordsToAdd);
+      }
+    }
+    return this.__suggestedKeywords.length > 0;
+    // FIXME really want attachments & comments here to check for jsbin/fiddle/codepen link
+  },
+  _hasWeirdKeywords: function() {
+    function isNormal(kw) {
+      return !gFixKeywordsFilter._normalKeywords.has(kw);
+    }
+    return gBugData.keywords.filter(isNormal).length;
+  },
+  applyLikelihood: function() {
+    // FIXME do something cleverer
+    return 1;
+  },
+  applies: function() {
+    return gBugData.status != "RESOLVED" &&
+           (this._hasSuggestedKeywords() || this._hasWeirdKeywords());
+  },
+  onDoAction: function() {
+  },
+  createUI: function() {
+    var div = document.createElement("div");
+    var button = document.createElement("button");
+    button.textContent = "Fix keywords";
+    button.addEventListener("click", function(e) {
+      var keywordField = document.querySelector("#keywords");
+      var existingList = keywordField.value.split(',').map(function(s) { return s.trim(); });
+      var listEls = Array.slice(e.target.parentNode.querySelectorAll('input[type=checkbox]'), 0);
+      listEls.forEach(function(el) {
+        if (!el.checked) {
+          return;
+        }
+        var todo = el.getAttribute("data-kw-type");
+        var kw = el.getAttribute("data-kw");
+        if (todo == "add" && existingList.indexOf(kw) == -1) {
+          existingList.push(kw);
+        } else if (todo == "remove" && existingList.indexOf(kw) != -1) {
+          var i = existingList.indexOf(kw);
+          existingList.splice(i, 1);
+        }
+      });
+      keywordField.value = existingList.join(', ');
+      var container = e.target.parentNode.parentNode;
+      container.remove();
+    });
+    div.appendChild(button);
+    var ul = document.createElement("ul");
+    this.__suggestedKeywords.forEach(function(kw) {
+      var li = document.createElement("li");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.setAttribute("data-id", "triage-helper-fix-keyword-" + kw);
+      cb.setAttribute("data-kw-type", "add");
+      cb.setAttribute("data-kw", kw);
+      cb.checked = true;
+      var label = document.createElement("label");
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(kw));
+      li.appendChild(label);
+      ul.appendChild(li);
+    });
+    div.appendChild(ul);
+    return div;
+  },
+};
+gFilters.push(gFixKeywordsFilter);
 
 on("data-loaded", createSuggestedActions)
 fetchBugData();
