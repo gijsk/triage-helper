@@ -234,6 +234,9 @@ var gFixKeywordsFilter = {
   id: "fix-keywords",
   _words: {
     crash: "crash",
+    "codepen.com": "testcase",
+    "jsbin.com": "testcase",
+    "jsfiddle.net": "testcase",
     "crash-stats.mozilla.com": "crashreportid",
     hang: "hang",
     freeze: "hang",
@@ -241,16 +244,6 @@ var gFixKeywordsFilter = {
     broken: ["regression", "regressionwindow-wanted"],
     flash: "flashplayer",
   },
-  _normalKeywords: new Set([
-    "crash", "hang", "crashreportid", "steps-wanted", "stackwanted",
-    "testcase", "testcase-wanted", "helpwanted", "pp",
-    "regression", "regressionwindow-wanted", "addon-compat",
-    "dev-doc-needed", "dev-doc-complete", "qawanted",
-    "sec-low", "sec-moderate", "sec-high", "sec-critical", "sec-audit", "sec-want", "sec-other",
-    "sec-vector", "sec-incident", "sec508",
-    "meta",
-    "flashplayer",
-  ]),
   _hasSuggestedKeywords: function() {
     if (this.__suggestedKeywords) {
       return this.__suggestedKeywords;
@@ -258,8 +251,8 @@ var gFixKeywordsFilter = {
     this.__suggestedKeywords = [];
     var summary = gBugData.summary.toLowerCase();
     var self = this;
-    for (var k in this._words) {
-      var keywordsToAdd = this._words[k];
+    for (var word in this._words) {
+      var keywordsToAdd = this._words[word];
       if (!Array.isArray(keywordsToAdd)) {
         keywordsToAdd = [keywordsToAdd];
       }
@@ -267,28 +260,23 @@ var gFixKeywordsFilter = {
       function bugHasKeyword(kw) {
         return gBugData.keywords.indexOf(kw) != -1;
       }
-      if (summary.contains(k) && !keywordsToAdd.every(bugHasKeyword)) {
+      if ((summary.contains(word) || gComments[0].text.contains(word)) && !keywordsToAdd.every(bugHasKeyword)) {
         this.__suggestedKeywords = this.__suggestedKeywords.concat(keywordsToAdd);
       }
     }
+    gAttachments.forEach(function(att) {
+      if (att.summary.toLowerCase().contains("test")) {
+        this.__suggestedKeywords.push("testcase");
+      }
+    }.bind(this));
     return this.__suggestedKeywords.length > 0;
-    // FIXME really want attachments & comments here to check for jsbin/fiddle/codepen link
-  },
-  _hasWeirdKeywords: function() {
-    function isNormal(kw) {
-      return !gFixKeywordsFilter._normalKeywords.has(kw);
-    }
-    return gBugData.keywords.filter(isNormal).length;
   },
   applyLikelihood: function() {
     // FIXME do something cleverer
     return 1;
   },
   applies: function() {
-    return gBugData.status != "RESOLVED" &&
-           (this._hasSuggestedKeywords() || this._hasWeirdKeywords());
-  },
-  onDoAction: function() {
+    return gBugData.status != "RESOLVED" && this._hasSuggestedKeywords();
   },
   createUI: function() {
     var div = document.createElement("div");
@@ -296,7 +284,8 @@ var gFixKeywordsFilter = {
     button.textContent = "Fix keywords";
     button.addEventListener("click", function(e) {
       var keywordField = document.querySelector("#keywords");
-      var existingList = keywordField.value.split(',').map(function(s) { return s.trim(); });
+      var existingList = keywordField.value.trim() ? keywordField.value.split(',') : [];
+      existingList = existingList.map(function(s) { return s.trim(); });
       var listEls = Array.slice(e.target.parentNode.querySelectorAll('input[type=checkbox]'), 0);
       listEls.forEach(function(el) {
         if (!el.checked) {
