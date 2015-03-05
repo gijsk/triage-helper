@@ -19,15 +19,30 @@ if (!gContentEl) {
   }, false);
 }
 var gBugID = (new URLSearchParams(location.search.substr(1))).get('id');
+var gBZAPIBugRoot = location.protocol + "//" + location.host +
+                    location.pathname.substring(0, location.pathname.lastIndexOf('/')) +
+                    "/rest/bug/" + gBugID;
 var gBugData = null;
 var gSuggestionList = null;
+var gComments = null;
+var gAttachments = null;
 
 
-function on(msg, handler) {
-  gParentEl.addEventListener("triage-helper-" + msg, handler, false);
+function on(messages, handler) {
+  if (!Array.isArray(messages)) {
+    messages = [messages];
+  }
+  for (var i = 0; i < messages.length; i++) {
+    gParentEl.addEventListener("triage-helper-" + messages[i], handler, false);
+  }
 }
-function off(msg, handler) {
-  gParentEl.removeEventListener("triage-helper-" + msg, handler, false);
+function off(messages, handler) {
+  if (!Array.isArray(messages)) {
+    messages = [messages];
+  }
+  for (var i = 0; i < messages.length; i++) {
+    gParentEl.removeEventListener("triage-helper-" + messages[i], handler, false);
+  }
 }
 function pub(msg, data) {
   var ev = new CustomEvent("triage-helper-" + msg, {detail: data});
@@ -48,18 +63,40 @@ function onErrorBugzilla(rsp) {
   console.error(rsp);
 }
 
-function onBugzillaData(e) {
-  var rsp = this.response;
+function noResponseError(rsp) {
   if (!rsp) {
     onNoBugzillaData();
-    return;
+    return false;
   }
   if (rsp.faults && rsp.faults.length > 0 || rsp.error) {
     onErrorBugzilla(rsp);
-    return;
+    return false;
   }
-  gBugData = rsp.bugs[0];
-  pub("data-loaded", gBugData);
+  return true;
+}
+
+function onBugzillaData(e) {
+  var rsp = this.response;
+  if (noResponseError(rsp)) {
+    gBugData = rsp.bugs[0];
+    pub("data-loaded", gBugData);
+  }
+}
+
+function onBugComments(e) {
+  var rsp = this.response;
+  if (noResponseError(rsp)) {
+    gComments = rsp.bugs[gBugID].comments;
+    pub("comments-loaded", gComments);
+  }
+}
+
+function onBugAttachments(e) {
+  var rsp = this.response;
+  if (noResponseError(rsp)) {
+    gAttachments = rsp.bugs[gBugID];
+    pub("attachments-loaded", gAttachments);
+  }
 }
 
 function toggleVisible(el, v) {
@@ -74,14 +111,9 @@ function toggleVisible(el, v) {
   }
 }
 
-function getBZAPIURLForBug() {
-  var root = location.host + location.pathname.substring(0, location.pathname.lastIndexOf('/'));
-  return location.protocol + "//" + root + "/rest/bug/" + gBugID;
-}
-
-function doBZXHR(method, postData, onload, onerror) {
+function doBZXHR(method, postData, onload, onerror, path) {
   var xhr = new XMLHttpRequest();
-  xhr.open(method, getBZAPIURLForBug());
+  xhr.open(method, path || gBZAPIBugRoot);
   xhr.setRequestHeader("Accept", "application/json");
   xhr.responseType = "json";
   xhr.onload = onload;
@@ -98,22 +130,41 @@ function fetchBugData() {
   doBZXHR("GET", null, onBugzillaData, onNoBugzillaData);
 }
 
-function onAfterPost(e) {
+function fetchSecondaryData() {
+  doBZXHR("GET", null, onBugComments, onNoBugzillaData, gBZAPIBugRoot + "/comment");
+  doBZXHR("GET", null, onBugAttachments, onNoBugzillaData, gBZAPIBugRoot + "/attachment");
+}
+
+function onAfterPost(resolve, reject, e) {
   var xhr = e.target;
   if (xhr && xhr.response && xhr.response.error) {
     alert("There was an error submitting this data to bugzilla: " + xhr.response.message);
+    Cu.reportError(xhr.response.message);
+    console.error(xhr.response);
+    reject(xhr.response);
     return;
   }
-  location.reload(true);
+  resolve(e);
 }
 
-function onAfterPostError(e) {
+function onAfterPostError(resolve, reject, e) {
   console.log(e);
   alert("Error posting to bugzilla: " + e);
+  reject(e);
 }
 
 function postBugData(data) {
-  doBZXHR("PUT", JSON.stringify(data), onAfterPost, onAfterPostError);
+  return new Promise(function(resolve, reject) {
+    doBZXHR("PUT", JSON.stringify(data), onAfterPost.bind(null, resolve, reject), onAfterPostError.bind(null, resolve, reject));
+  });
+}
+
+function tagComment(commentObj, tag) {
+  var url = gBZAPIBugRoot.replace(/[^\/]*$/, "comment/" + commentObj.id + "/tags");
+  return new Promise(function(resolve, reject) {
+    doBZXHR("PUT", JSON.stringify({comment_id: commentObj.id, add: [tag]}),
+            onAfterPost.bind(null, resolve, reject), onAfterPostError.bind(null, resolve, reject), url);
+  });
 }
 
 function createSuggestionUI(filter) {
@@ -127,25 +178,9 @@ function createSuggestionUI(filter) {
     button.className = "bz-triage-suggestion-btn";
     button.textContent = filter.label;
     button.addEventListener('click', function(e) {
-      filter.onDoAction(filter.extraActions.filter(function(action) {
-        return el.querySelector('input[data-id="' + action.id + '"]').checked;
-      }));
+      filter.onDoAction();
     }, false);
     el.appendChild(button);
-    if (filter.extraActions) {
-      el.appendChild(document.createElement("br"));
-      for (var i = 0; i < filter.extraActions.length; i++) {
-        var action = filter.extraActions[i];
-        var cb = document.createElement("input");
-        cb.setAttribute("type", "checkbox");
-        cb.setAttribute("data-id", action.id);
-        var label = document.createElement("label");
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(" " + action.label));
-        el.appendChild(label);
-        el.appendChild(document.createElement("br"));
-      }
-    }
   }
   gSuggestionList.appendChild(el);
 }
@@ -156,11 +191,17 @@ function createSuggestedActions() {
   toggleVisible(gContentEl, false);
   gContentEl.textContent = "Suggested actions:";
   var myFilters = gFilters.slice(0).filter(function(f) { return f.applies(); });
-  myFilters.sort(function(a, b) { return a.applyLikelihood() < b.applyLikelihood() });
-  for (var i = 0; i < myFilters.length; i++) {
-    createSuggestionUI(myFilters[i]);
+  if (myFilters.length) {
+    myFilters.sort(function(a, b) { return a.applyLikelihood() < b.applyLikelihood() });
+    for (var i = 0; i < myFilters.length; i++) {
+      createSuggestionUI(myFilters[i]);
+    }
+    gContentEl.appendChild(gSuggestionList);
+    toggleVisible(gParentEl, true);
+  } else {
+    gContentEl.textContent = "No suggested actions.";
+    toggleVisible(gParentEl, false);
   }
-  gContentEl.appendChild(gSuggestionList);
 }
 
 var gFilters = [];
@@ -172,28 +213,19 @@ var gMarkAsInvalidFilter = {
     return 1;
   },
   applies: function() {
-    return gBugData.status != "RESOLVED";
+    return gBugData.status != "RESOLVED" && gComments.length < 4;
   },
-  label: "Mark as invalid",
+  label: "Spam/Test bug",
   onDoAction: function(additionalActions) {
     var bugData = {"status": "RESOLVED", "resolution": "INVALID"};
-    additionalActions.forEach(function(action) { action.filterAction(bugData); });
-    postBugData(bugData);
+    bugData.product = "Invalid Bugs";
+    bugData.component = "General";
+    bugData.comment = {body: INVALID_BUG_SPAM};
+    bugData.version = 'unspecified';
+    Promise.all([postBugData(bugData), tagComment(gComments[0], "spam")]).then(function() {
+      location.reload();
+    });
   },
-  extraActions: [
-    {
-      label: "Spammy",
-      id: "spam",
-      filterAction: function(d) {
-        d.product = "Invalid Bugs";
-        d.component = "General";
-        d.comment = {body: INVALID_BUG_SPAM};
-        d.version = 'unspecified';
-        // FIXME: tag comment as spam:
-        //doTagCommentSpam(gBugData.commentsdd
-      },
-    }
-  ],
 };
 
 gFilters.push(gMarkAsInvalidFilter);
@@ -305,8 +337,13 @@ var gFixKeywordsFilter = {
 };
 gFilters.push(gFixKeywordsFilter);
 
-on("data-loaded", createSuggestedActions)
+on(["data-loaded", "comments-loaded", "attachments-loaded"], function() {
+  if (gBugData && gComments && gAttachments) {
+    createSuggestedActions();
+  }
+});
 fetchBugData();
+fetchSecondaryData();
 
 gParentEl.querySelector('#triage-header').addEventListener('click', function(e) {
   toggleVisible(gContentEl);
