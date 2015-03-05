@@ -234,7 +234,7 @@ var gFixKeywordsFilter = {
   id: "fix-keywords",
   _words: {
     crash: "crash",
-    "codepen.com": "testcase",
+    "codepen.io": "testcase",
     "jsbin.com": "testcase",
     "jsfiddle.net": "testcase",
     "crash-stats.mozilla.com": "crashreportid",
