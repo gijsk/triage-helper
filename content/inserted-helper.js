@@ -5,9 +5,10 @@
 var INVALID_BUG_SPAM =
 `This is a production bug tracker used by the Mozilla community.
 Filing test bugs here wastes the time of all our contributors, volunteers as well as paid employees.
-Please use http://landfill.bugzilla.org/ for testing instead, and don't file test bugs here.
+Please use https://landfill.bugzilla.org/ for testing instead, and don't file test bugs here.
 If you continue to abuse this bugzilla instance, your account will be disabled.`;
 
+var gAPIKey;
 var gParentEl = document.getElementById("bz-triage-helper-container");
 var gContentEl = gParentEl.querySelector('#triage-tools');
 if (!gContentEl) {
@@ -26,6 +27,8 @@ var gBugData = null;
 var gSuggestionList = null;
 var gComments = null;
 var gAttachments = null;
+
+var gIsLandfill = location.host.indexOf("landfill") != -1;
 
 
 function on(messages, handler) {
@@ -135,11 +138,31 @@ function fetchSecondaryData() {
   doBZXHR("GET", null, onBugAttachments, onNoBugzillaData, gBZAPIBugRoot + "/attachment");
 }
 
-function onAfterPost(resolve, reject, e) {
+function doLogin() {
+  if (gAPIKey) {
+    return Promise.resolve(gAPIKey);
+  }
+  return new Promise(function(resolve, reject) {
+    on("apikey", function(data) {
+      off("apikey", arguments.callee);
+      gAPIKey = data;
+      resolve(data);
+    });
+    pub("login-request");
+  });
+
+
+}
+
+function onAfterPost(resolve, reject, e, repostData) {
   var xhr = e.target;
   if (xhr && xhr.response && xhr.response.error) {
+    if (xhr.response.code === 410 && repostData) {
+      doLogin().then(function() { postBugData(data).then(resolve, reject); });
+      return;
+    }
+
     alert("There was an error submitting this data to bugzilla: " + xhr.response.message);
-    Cu.reportError(xhr.response.message);
     console.error(xhr.response);
     reject(xhr.response);
     return;
@@ -154,8 +177,11 @@ function onAfterPostError(resolve, reject, e) {
 }
 
 function postBugData(data) {
+  if (gAPIKey) {
+    data.api_key = gAPIKey;
+  }
   return new Promise(function(resolve, reject) {
-    doBZXHR("PUT", JSON.stringify(data), onAfterPost.bind(null, resolve, reject), onAfterPostError.bind(null, resolve, reject));
+    doBZXHR("PUT", JSON.stringify(data), onAfterPost.bind(null, resolve, reject, data), onAfterPostError.bind(null, resolve, reject));
   });
 }
 
@@ -213,13 +239,16 @@ var gMarkAsInvalidFilter = {
     return 1;
   },
   applies: function() {
-    return gBugData.status != "RESOLVED" && gComments.length < 4;
+    return gBugData.status != "RESOLVED" && gBugData.status != "VERIFIED" &&
+           gComments.length < 4;
   },
   label: "Spam/Test bug",
   onDoAction: function(additionalActions) {
     var bugData = {"status": "RESOLVED", "resolution": "INVALID"};
-    bugData.product = "Invalid Bugs";
-    bugData.component = "General";
+    if (!gIsLandfill) {
+      bugData.product = "Invalid Bugs";
+      bugData.component = "General";
+    }
     bugData.comment = {body: INVALID_BUG_SPAM};
     bugData.version = 'unspecified';
     Promise.all([postBugData(bugData), tagComment(gComments[0], "spam")]).then(function() {
@@ -276,7 +305,7 @@ var gFixKeywordsFilter = {
     return 1;
   },
   applies: function() {
-    return gBugData.status != "RESOLVED" && this._hasSuggestedKeywords();
+    return gBugData.status != "RESOLVED" && gBugData.status != "VERIFIED" && this._hasSuggestedKeywords();
   },
   createUI: function() {
     var div = document.createElement("div");
@@ -325,6 +354,96 @@ var gFixKeywordsFilter = {
   },
 };
 gFilters.push(gFixKeywordsFilter);
+
+var gAskQuestionFilter = {
+  id: "ask-questions",
+  _questions: new Map([
+    {
+      id: "new-profile",
+      label: "New profile",
+      question: "Have you tried if you see this issue in a new profile, too? You can find " +
+                "details on how to create a new profile (without changing anything in your " +
+                "regular profile!) at " +
+                "https://support.mozilla.org/kb/profile-manager-create-and-remove-firefox-profiles ."
+    },
+    {
+      id: "safe-mode",
+      label: "Safe mode",
+      question: "Have you tried if you see this issue in Firefox's safe mode, too? " +
+                "You can restart Firefox into safe mode by using the " +
+                "'Restart Firefox with add-ons disabled' entry in the 'Help' menu. This will " +
+                "also disable graphics hardware acceleration and some JS engine optimizations, " +
+                "not just extensions and plugins. See " +
+                "https://support.mozilla.org/kb/troubleshoot-firefox-issues-using-safe-mode" +
+                " ."
+    },
+    {
+      id: "crash-report-id",
+      label: "crash report?",
+      question: "Do you have a crash report ID? You can find crash report IDs for crash reports " +
+                "you have submitted by going to the 'about:crashes' page in Firefox. "
+    },
+    {
+      id: "testcase",
+      label: "testcase?",
+      question: "Do you have a testcase we can use to try to reproduce the issue you're seeing?"
+    },
+    {
+      id: "other-browsers",
+      label: "other browsers",
+      question: "Do you see the same thing happening in other browsers, like Safari, " +
+                "Internet Explorer, or Chrome?"
+    },
+  ].map(x => [x.id, x])),
+  createUI: function() {
+    var div = document.createElement("div");
+    div.appendChild(document.createTextNode("Needinfo reporter about:"));
+    var button = document.createElement("button");
+    button.textContent = "Ask";
+    var ul = document.createElement("ul");
+    this._questions.forEach(function(q) {
+      var li = document.createElement("li");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.setAttribute("data-questionid", q.id);
+      var label = document.createElement("label");
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(q.label));
+      li.appendChild(label);
+      ul.appendChild(li);
+    });
+    div.appendChild(ul);
+
+    button.addEventListener("click", function(e) {
+      var listEls = Array.slice(e.target.parentNode.querySelectorAll('input[type=checkbox]'), 0);
+      var questionTexts = [];
+      listEls.forEach(function(el) {
+        if (!el.checked) {
+          return;
+        }
+        var questionId = el.getAttribute("data-questionid");
+        console.error(questionId);
+        var question = gAskQuestionFilter._questions.get(questionId);
+        questionTexts.push(question.question);
+      });
+      var bugData = {comment: {body: questionTexts.join("\n\n")}};
+      bugData.flags = {"new": true, name: "needinfo", requestee: gBugData.creator};
+      postBugData(bugData).then(function() {
+        location.reload();
+      });
+    });
+    div.appendChild(button);
+    return div;
+  },
+  applies: function() {
+    return gBugData.status != "RESOLVED" && gBugData.status != "VERIFIED";
+  },
+  applyLikelihood: function() {
+    // FIXME...
+    return 1;
+  },
+};
+gFilters.push(gAskQuestionFilter);
 
 on(["data-loaded", "comments-loaded", "attachments-loaded"], function() {
   if (gBugData && gComments && gAttachments) {

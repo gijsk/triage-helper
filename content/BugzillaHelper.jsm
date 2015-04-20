@@ -5,10 +5,18 @@
 "use strict";
 
 const {interfaces: Ci, utils: Cu, classes: Cc} = Components;
+Cu.import("resource://gre/modules/Services.jsm");
 this.EXPORTED_SYMBOLS = ["BugzillaHelper"];
 
 let BugzillaHelper = {
   elementID: "bz-triage-helper-container",
+  apiKey: "",
+  _askForAPIKey: function(win) {
+    var apiKey = {};
+    Services.prompt.prompt(win || null, "Bugzilla API key for Triage Helper",
+        "Please provide Triage Helper with a bugzilla API key in order for it to work properly:", apiKey, null, null);
+    this.apiKey = apiKey.value;
+  },
   insertContent: function(win) {
     if (!this._helperHTML) {
       return;
