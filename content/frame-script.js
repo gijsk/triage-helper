@@ -100,12 +100,12 @@ function onDOMContentLoad(e) {
   // Trigger the lazy getter:
   let box = gShared.SandBox;
   box.handlePage(win);
-  win.document.getElementById(gShared.elementID).addEventListener('triage-helper-login-request', function(e) {
-    if (!gShared.apiKey)
-      gShared._askForAPIKey(win);
-    if (gShared.apiKey) {
-      let ev = new win.CustomEvent('triage-helper-apikey', false, false, gShared.apiKey);
-      win.document.getElementById(gShared.elementID).dispatchEvent(ev);
+  win.document.getElementById(gShared.BugzillaHelper.elementID).addEventListener('triage-helper-login-request', function(e) {
+    if (!gShared.BugzillaHelper.apiKey)
+      gShared.BugzillaHelper._askForAPIKey(win);
+    if (gShared.BugzillaHelper.apiKey) {
+      let ev = new win.CustomEvent('triage-helper-apikey', {value: gShared.BugzillaHelper.apiKey});
+      win.document.getElementById(gShared.BugzillaHelper.elementID).dispatchEvent(ev);
     }
   });
   ensureStylesGetLoaded();

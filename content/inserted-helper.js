@@ -145,7 +145,7 @@ function doLogin() {
   return new Promise(function(resolve, reject) {
     on("apikey", function(data) {
       off("apikey", arguments.callee);
-      gAPIKey = data;
+      gAPIKey = data.value;
       resolve(data);
     });
     pub("login-request");
@@ -154,11 +154,11 @@ function doLogin() {
 
 }
 
-function onAfterPost(resolve, reject, e, repostData) {
+function onAfterPost(retryForbidden, resolve, reject, repostData, e) {
   var xhr = e.target;
   if (xhr && xhr.response && xhr.response.error) {
-    if (xhr.response.code === 410 && repostData) {
-      doLogin().then(function() { postBugData(data).then(resolve, reject); });
+    if (xhr.response.code === 410 && repostData && !retryForbidden) {
+      doLogin().then(function() { postBugData(repostData, true).then(resolve, reject); });
       return;
     }
 
@@ -176,12 +176,14 @@ function onAfterPostError(resolve, reject, e) {
   reject(e);
 }
 
-function postBugData(data) {
+function postBugData(data, retryForbidden) {
   if (gAPIKey) {
     data.api_key = gAPIKey;
   }
   return new Promise(function(resolve, reject) {
-    doBZXHR("PUT", JSON.stringify(data), onAfterPost.bind(null, resolve, reject, data), onAfterPostError.bind(null, resolve, reject));
+    doBZXHR("PUT", JSON.stringify(data),
+            onAfterPost.bind(null, retryForbidden, resolve, reject, data),
+            onAfterPostError.bind(null, resolve, reject));
   });
 }
 

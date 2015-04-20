@@ -14,7 +14,7 @@ let BugzillaHelper = {
   _askForAPIKey: function(win) {
     var apiKey = {};
     Services.prompt.prompt(win || null, "Bugzilla API key for Triage Helper",
-        "Please provide Triage Helper with a bugzilla API key in order for it to work properly:", apiKey, null, null);
+        "Please provide Triage Helper with a bugzilla API key in order for it to work properly:", apiKey, "", {});
     this.apiKey = apiKey.value;
   },
   insertContent: function(win) {
