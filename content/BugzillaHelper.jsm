@@ -15,7 +15,10 @@ let BugzillaHelper = {
     var apiKey = {};
     Services.prompt.prompt(win || null, "Bugzilla API key for Triage Helper",
         "Please provide Triage Helper with a bugzilla API key in order for it to work properly:", apiKey, "", {});
-    this.apiKey = apiKey.value;
+    if (apiKey.value) {
+      this.apiKey = apiKey.value;
+      Services.prefs.setCharPref("extensions.triagehelper.bzapikey", this.apiKey);
+    }
   },
   insertContent: function(win) {
     if (!this._helperHTML) {
@@ -61,4 +64,10 @@ let BugzillaHelper = {
     this.insertScript(win);
   },
 };
+
+try {
+  BugzillaHelper.apiKey = Services.prefs.getCharPref("extensions.triagehelper.bzapikey");
+} catch (ex) {
+  // Do nothing.
+}
 

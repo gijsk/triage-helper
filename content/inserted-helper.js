@@ -143,15 +143,13 @@ function doLogin() {
     return Promise.resolve(gAPIKey);
   }
   return new Promise(function(resolve, reject) {
-    on("apikey", function(data) {
+    on("apikey", function(ev) {
       off("apikey", arguments.callee);
-      gAPIKey = data.value;
-      resolve(data);
+      gAPIKey = ev.detail;
+      resolve(gAPIKey);
     });
     pub("login-request");
   });
-
-
 }
 
 function onAfterPost(retryForbidden, resolve, reject, repostData, e) {
@@ -424,12 +422,11 @@ var gAskQuestionFilter = {
           return;
         }
         var questionId = el.getAttribute("data-questionid");
-        console.error(questionId);
         var question = gAskQuestionFilter._questions.get(questionId);
         questionTexts.push(question.question);
       });
       var bugData = {comment: {body: questionTexts.join("\n\n")}};
-      bugData.flags = {"new": true, name: "needinfo", requestee: gBugData.creator};
+      bugData.flags = [{"new": true, status: "?", name: "needinfo", requestee: gBugData.creator}];
       postBugData(bugData).then(function() {
         location.reload();
       });

@@ -104,7 +104,7 @@ function onDOMContentLoad(e) {
     if (!gShared.BugzillaHelper.apiKey)
       gShared.BugzillaHelper._askForAPIKey(win);
     if (gShared.BugzillaHelper.apiKey) {
-      let ev = new win.CustomEvent('triage-helper-apikey', {value: gShared.BugzillaHelper.apiKey});
+      let ev = new win.CustomEvent('triage-helper-apikey', {detail: gShared.BugzillaHelper.apiKey, bubbles: false, cancelable: false});
       win.document.getElementById(gShared.BugzillaHelper.elementID).dispatchEvent(ev);
     }
   });
