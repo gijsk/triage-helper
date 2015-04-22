@@ -28,7 +28,7 @@ var gSuggestionList = null;
 var gComments = null;
 var gAttachments = null;
 
-var gIsLandfill = location.host.indexOf("landfill") != -1;
+var gIsProd = location.host == "bugzilla.mozilla.org";
 
 
 function on(messages, handler) {
@@ -189,7 +189,7 @@ function tagComment(commentObj, tag) {
   var url = gBZAPIBugRoot.replace(/[^\/]*$/, "comment/" + commentObj.id + "/tags");
   return new Promise(function(resolve, reject) {
     doBZXHR("PUT", JSON.stringify({comment_id: commentObj.id, add: [tag]}),
-            onAfterPost.bind(null, resolve, reject), onAfterPostError.bind(null, resolve, reject), url);
+            onAfterPost.bind(null, false, resolve, reject, null), onAfterPostError.bind(null, resolve, reject), url);
   });
 }
 
@@ -245,7 +245,7 @@ var gMarkAsInvalidFilter = {
   label: "Spam/Test bug",
   onDoAction: function(additionalActions) {
     var bugData = {"status": "RESOLVED", "resolution": "INVALID"};
-    if (!gIsLandfill) {
+    if (gIsProd) {
       bugData.product = "Invalid Bugs";
       bugData.component = "General";
     }

@@ -49,6 +49,7 @@ function ensureScriptGetsLoaded() {
 const gAllowedHosts = [
   "bugzilla.mozilla.org",
   "landfill.bugzilla.org",
+  "bugzilla-dev.allizom.org",
 ];
 
 XPCOMUtils.defineLazyGetter(gShared, "SandBox", function() {
