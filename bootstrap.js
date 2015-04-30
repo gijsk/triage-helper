@@ -6,28 +6,34 @@ const kAddonPackageID = "triage-helper";
 const kBootstrapModuleURL = "chrome://" + kAddonPackageID + "/content/BootstrapModule.jsm";
 XPCOMUtils.defineLazyModuleGetter(this, "BootstrapModule", kBootstrapModuleURL);
 
-function safe(fn) {
-  try {
-    fn();
-  } catch (ex) {
-    Cu.reportError(ex);
-  }
+function safeCall(fn) {
+  return safeFn(fn)();
+}
+
+function safeFn(fn) {
+  return function() {
+    try {
+      return fn();
+    } catch (ex) {
+      Cu.reportError(ex);
+    }
+  };
 }
 
 function startup(data,reason) {
-    safe(() => BootstrapModule.startup());  // Do whatever initial startup stuff you need to do
+    safeCall(() => BootstrapModule.startup());  // Do whatever initial startup stuff you need to do
 
-    forEachOpenWindow(safe((w) => BootstrapModule.loadIntoWindow(w)));
+    forEachOpenWindow(safeFn((w) => BootstrapModule.loadIntoWindow(w)));
     Services.wm.addListener(WindowListener);
 }
 function shutdown(data,reason) {
     if (reason == APP_SHUTDOWN)
         return;
 
-    forEachOpenWindow(safe((w) => BootstrapModule.unloadFromWindow(w)));
+    forEachOpenWindow(safeFn((w) => BootstrapModule.unloadFromWindow(w)));
     Services.wm.removeListener(WindowListener);
 
-    safe(() => BootstrapModule.shutdown());  // Do whatever shutdown stuff you need to do on addon disable
+    safeCall(() => BootstrapModule.shutdown());  // Do whatever shutdown stuff you need to do on addon disable
 
     Components.utils.unload(kBootstrapModuleURL);
 
