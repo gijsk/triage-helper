@@ -116,6 +116,9 @@ function toggleVisible(el, v) {
 
 function doBZXHR(method, postData, onload, onerror, path) {
   var xhr = new XMLHttpRequest();
+  if (gAPIKey && method === "GET") {
+    path = (path || gBZAPIBugRoot) + "?api_key=" + encodeURIComponent(gAPIKey);
+  }
   xhr.open(method, path || gBZAPIBugRoot);
   xhr.setRequestHeader("Accept", "application/json");
   xhr.responseType = "json";
@@ -248,6 +251,12 @@ var gMarkAsInvalidFilter = {
     if (gIsProd) {
       bugData.product = "Invalid Bugs";
       bugData.component = "General";
+    }
+    var undesiredGroups = gBugData.groups.filter(function(group) {
+      return group.endsWith("core-security");
+    });
+    if (undesiredGroups.length) {
+      bugData.groups = {remove: undesiredGroups};
     }
     bugData.comment = {body: INVALID_BUG_SPAM};
     bugData.version = 'unspecified';
@@ -449,8 +458,11 @@ on(["data-loaded", "comments-loaded", "attachments-loaded"], function() {
     createSuggestedActions();
   }
 });
-fetchBugData();
-fetchSecondaryData();
+
+doLogin().then(function() {
+  fetchBugData();
+  fetchSecondaryData();
+});
 
 gParentEl.querySelector('#triage-header').addEventListener('click', function(e) {
   toggleVisible(gContentEl);
