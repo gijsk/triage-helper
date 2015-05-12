@@ -289,12 +289,12 @@ var gFixKeywordsFilter = {
       function bugHasKeyword(kw) {
         return gBugData.keywords.indexOf(kw) != -1;
       }
-      if ((summary.contains(word) || gComments[0].text.contains(word)) && !keywordsToAdd.every(bugHasKeyword)) {
+      if ((summary.indexOf(word) != -1 || gComments[0].text.indexOf(word) != -1) && !keywordsToAdd.every(bugHasKeyword)) {
         this.__suggestedKeywords = this.__suggestedKeywords.concat(keywordsToAdd);
       }
     }
     gAttachments.forEach(function(att) {
-      if (att.summary.toLowerCase().contains("test")) {
+      if (att.summary.toLowerCase().indexOf("test") != -1) {
         this.__suggestedKeywords.push("testcase");
       }
     }.bind(this));
