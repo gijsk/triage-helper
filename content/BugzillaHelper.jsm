@@ -52,13 +52,16 @@ let BugzillaHelper = {
     script.textContent = this._helperJS;
     div.appendChild(script);
   },
-  handlePage: function(win) {
+  createHelperElement: function(win) {
     let doc = win.document;
     let div = doc.createElement('div');
     div.id = this.elementID;
     // Avoid reflows as much as possible:
     div.setAttribute("style", "position: absolute; display: none;");
     doc.body.appendChild(div);
+    return div;
+  },
+  handlePage: function(win) {
     this.insertContent(win);
     this.insertStyle(win);
     this.insertScript(win);

@@ -92,16 +92,20 @@ function onDOMContentLoad(e) {
 
   gWins.add(win);
   win.addEventListener('unload', function(e) {
-    if (!e.isTrusted || e.target != e.target.top) {
+    if (!e.isTrusted) {
+      return;
+    }
+    let unloadedWin = e.target.defaultView;
+    if (!unloadedWin || unloadedWin != unloadedWin.top) {
       return;
     }
     win.removeEventListener('unload', arguments.callee);
     gWins.delete(win);
-  });
+  }, false);
   // Trigger the lazy getter:
   let box = gShared.SandBox;
-  box.handlePage(win);
-  win.document.getElementById(gShared.BugzillaHelper.elementID).addEventListener('triage-helper-login-request', function(e) {
+  let element = box.createHelperElement(win);
+  element.addEventListener('triage-helper-login-request', function(e) {
     if (!gShared.BugzillaHelper.apiKey)
       gShared.BugzillaHelper._askForAPIKey(win);
     if (gShared.BugzillaHelper.apiKey) {
@@ -109,6 +113,7 @@ function onDOMContentLoad(e) {
       win.document.getElementById(gShared.BugzillaHelper.elementID).dispatchEvent(ev);
     }
   });
+  box.handlePage(win);
   ensureStylesGetLoaded();
   ensureContentGetsLoaded();
   ensureScriptGetsLoaded();
