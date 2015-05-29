@@ -1,3 +1,4 @@
 # Ignore VIM swap files because ugh.
 
 .*.swp
+triage-helper.xpi
