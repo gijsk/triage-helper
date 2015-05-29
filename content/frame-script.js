@@ -80,12 +80,15 @@ XPCOMUtils.defineLazyGetter(gShared, "SandBox", function() {
 
 function onDOMContentLoad(e) {
   let win = e.target.defaultView;
-  // Ensure we're on BMO:
-  if (!win.location.protocol.startsWith("https") ||
+  let docURI = e.target.documentURI;
+  // Ensure we're on BMO (and not in a restored tab for BMO):
+  if (docURI == "about:blank" ||
+      !win.location.protocol.startsWith("https") ||
       !gAllowedHosts.find(x => x == win.location.host) ||
       !win.location.pathname.endsWith("/show_bug.cgi")) {
     return;
   }
+
   // Don't care about frames:
   if (win != win.top)
     return;
