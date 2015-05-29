@@ -206,6 +206,22 @@ function tagComment(commentObj, tag) {
   });
 }
 
+function wantToMarkInTriage() {
+  return document.getElementById("bz-triage-markintriage").checked;
+}
+
+function createInTriageCheckbox() {
+  var label = document.createElement("label");
+  var cb = document.createElement("input");
+  cb.setAttribute("type", "checkbox");
+  cb.checked = true;
+  cb.id = "bz-triage-markintriage";
+  label.appendChild(cb);
+  label.appendChild(document.createTextNode("Mark bug as in-triage"));
+  gContentEl.appendChild(label);
+  gContentEl.appendChild(document.createElement("br"));
+}
+
 function createSuggestionUI(filter) {
   var el = document.createElement("li");
   el.className = "bz-triage-suggestion";
@@ -228,7 +244,7 @@ function createSuggestedActions() {
   gSuggestionList = document.createElement("ol");
   gSuggestionList.id = "bz-triage-suggestions";
   toggleVisible(gContentEl, false);
-  gContentEl.textContent = "Suggested actions:";
+  gContentEl.appendChild(document.createTextNode("Suggested actions:"));
   var myFilters = gFilters.slice(0).filter(function(f) { return f.applies(); });
   if (myFilters.length) {
     myFilters.sort(function(a, b) { return a.applyLikelihood() < b.applyLikelihood() });
@@ -348,6 +364,9 @@ var gFixKeywordsFilter = {
           existingList.splice(i, 1);
         }
       });
+      if (wantToMarkInTriage() && existingList.indexOf("in-triage") == -1) {
+        existingList.push("in-triage");
+      }
       keywordField.value = existingList.join(', ');
       var container = e.target.parentNode.parentNode;
       container.remove();
@@ -446,6 +465,9 @@ var gAskQuestionFilter = {
       });
       var bugData = {comment: {body: questionTexts.join("\n\n")}};
       bugData.flags = [{"new": true, status: "?", name: "needinfo", requestee: gBugData.creator}];
+      if (wantToMarkInTriage()) {
+        bugData.keywords = {add: ["in-triage"]};
+      }
       postBugData(bugData).then(function() {
         location.reload();
       });
@@ -465,6 +487,10 @@ gFilters.push(gAskQuestionFilter);
 
 on(["data-loaded", "comments-loaded", "attachments-loaded"], function() {
   if (gBugData && gComments && gAttachments) {
+    while (gContentEl.firstChild) {
+      gContentEl.firstChild.remove();
+    }
+    createInTriageCheckbox();
     createSuggestedActions();
   }
 });
