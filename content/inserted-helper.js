@@ -9,6 +9,7 @@ Please use https://landfill.bugzilla.org/ for testing instead, and don't file te
 If you continue to abuse this bugzilla instance, your account will be disabled.`;
 
 var gAPIKey;
+var gAPIToken = window.BUGZILLA && window.BUGZILLA.api_token;
 var gParentEl = document.getElementById("bz-triage-helper-container");
 var gContentEl = gParentEl.querySelector('#triage-tools');
 if (!gContentEl) {
@@ -116,7 +117,9 @@ function toggleVisible(el, v) {
 
 function doBZXHR(method, postData, onload, onerror, path) {
   var xhr = new XMLHttpRequest();
-  if (gAPIKey && method === "GET") {
+  if (gAPIToken) {
+    path = (path || gBZAPIBugRoot) + "?Bugzilla_api_token=" + encodeURIComponent(gAPIToken);
+  } else if (gAPIKey && method === "GET") {
     path = (path || gBZAPIBugRoot) + "?api_key=" + encodeURIComponent(gAPIKey);
   }
   xhr.open(method, path || gBZAPIBugRoot);
@@ -141,7 +144,10 @@ function fetchSecondaryData() {
   doBZXHR("GET", null, onBugAttachments, onNoBugzillaData, gBZAPIBugRoot + "/attachment");
 }
 
-function doLogin() {
+function doLogin(forceWantAPIKey) {
+  if (!forceWantAPIKey && gAPIToken) {
+    return Promise.resolve();
+  }
   if (gAPIKey) {
     return Promise.resolve(gAPIKey);
   }
@@ -159,7 +165,9 @@ function onAfterPost(retryForbidden, resolve, reject, repostData, e) {
   var xhr = e.target;
   if (xhr && xhr.response && xhr.response.error) {
     if (xhr.response.code === 410 && repostData && !retryForbidden) {
-      doLogin().then(function() { postBugData(repostData, true).then(resolve, reject); });
+      doLogin(true).then(function() {
+        postBugData(repostData, true, true).then(resolve, reject);
+      });
       return;
     }
 
@@ -177,8 +185,10 @@ function onAfterPostError(resolve, reject, e) {
   reject(e);
 }
 
-function postBugData(data, retryForbidden) {
-  if (gAPIKey) {
+function postBugData(data, retryForbidden, forceWantAPIKey) {
+  if (!forceWantAPIKey && gAPIToken) {
+    data.Bugzilla_api_token = gAPIToken;
+  } else if (gAPIKey) {
     data.api_key = gAPIKey;
   }
   return new Promise(function(resolve, reject) {
